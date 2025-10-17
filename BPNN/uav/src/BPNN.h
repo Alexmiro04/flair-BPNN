@@ -15,6 +15,7 @@
 
 #include <UavStateMachine.h>
 #include "myCtrl.h"
+#include <Vector2D.h>
 
 namespace flair {
     namespace gui {
@@ -44,9 +45,15 @@ class BPNN : public flair::meta::UavStateMachine {
 
     private:
 
+    bool initial_circle_traj = false;
+    float initial_angle = 0.0f;
+    flair::core::Vector2Df initial_circle_pos, circle_center;
+    
+
 	enum class BehaviourMode_t {
             Default,
             PositionHold,
+            GoToCircleStart,
             Circle, 
             Regulation, 
             Hover
@@ -69,7 +76,7 @@ class BPNN : public flair::meta::UavStateMachine {
         void ExtraCheckJoystick(void) override;
         const flair::core::AhrsData *GetOrientation(void) const override;
         void AltitudeValues(float &z,float &dz) const override;
-        void PositionValues(flair::core::Vector2Df &pos_error,flair::core::Vector2Df &vel_error,float &yaw_ref);
+        void PositionValues(flair::core::Vector2Df &pos_error,flair::core::Vector2Df &vel_error,float &yaw_ref, flair::core::Vector2Df &circle_acc);
         flair::core::AhrsData *GetReferenceOrientation(void) override;
         void SignalEvent(Event_t event) override;
         void ComputeCustomTorques(flair::core::Euler &torques);

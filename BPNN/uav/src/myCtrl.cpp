@@ -26,7 +26,7 @@ MyController::MyController(const LayoutPosition *position, const string &name) :
     first_update = true;
 
     // Input matrix
-    input = new Matrix(this, 4, 5, floatType, name);
+    input = new Matrix(this, 4, 6, floatType, name);
 
     // Matrix descriptor for logging. It should be always a nx1 matrix. 
     MatrixDescriptor *log_labels = new MatrixDescriptor(4, 1);
@@ -92,6 +92,7 @@ void MyController::UpdateFrom(const io_data *data)
     input->GetMutex();
     Vector3Df pos_error(input->Value(0, 0), input->Value(1, 0), input->Value(2, 0));
     Vector3Df vel_error(input->Value(0, 1), input->Value(1, 1), input->Value(2, 1));
+    Vector3Df xppd(input->Value(0, 5), input->Value(1, 5), input->Value(2, 5)); // Desired position in x, y, z
     Quaternion q(input->Value(0, 2), input->Value(1, 2), input->Value(2, 2), input->Value(3, 2));
     Vector3Df omega(input->Value(0, 3), input->Value(1, 3), input->Value(2, 3));
     float yaw_ref = input->Value(0, 4);
@@ -110,9 +111,9 @@ void MyController::UpdateFrom(const io_data *data)
 
 
     // Cartesian custom controller
-    u.x = mass_ref->Value()*(Kp_pos_val.x*pos_error.x + Kd_pos_val.x*vel_error.x);
-    u.y = mass_ref->Value()*(Kp_pos_val.y*pos_error.y + Kd_pos_val.y*vel_error.y);
-    u.z = mass_ref->Value()*(Kp_pos_val.z*pos_error.z + Kd_pos_val.z*vel_error.z - g);
+    u.x = mass_ref->Value()*(xppd.x+Kp_pos_val.x*pos_error.x + Kd_pos_val.x*vel_error.x);
+    u.y = mass_ref->Value()*(xppd.y+Kp_pos_val.y*pos_error.y + Kd_pos_val.y*vel_error.y);
+    u.z = mass_ref->Value()*(xppd.z+Kp_pos_val.z*pos_error.z + Kd_pos_val.z*vel_error.z - g);
     float ctrl_z = u.z; // This is the thrust needed to control the z position before saturation
     u.Saturate(sat_pos->Value());
 
@@ -164,7 +165,7 @@ void MyController::Reset(void)
     first_update = true;
 }
 
-void MyController::SetValues(Vector3Df pos_error, Vector3Df vel_error, Quaternion currentQuaternion, Vector3Df omega, float yaw_ref)
+void MyController::SetValues(Vector3Df pos_error, Vector3Df vel_error, Quaternion currentQuaternion, Vector3Df omega, float yaw_ref, float xppd, float yppd, float zppd)
 {
     // Set the input values for the controller. 
     // This function is called from the main controller to set the input values.
@@ -188,6 +189,11 @@ void MyController::SetValues(Vector3Df pos_error, Vector3Df vel_error, Quaternio
 
     // Set yaw reference
     input->SetValue(0, 4, yaw_ref);
+
+    input->SetValue(0, 5, xppd);
+    input->SetValue(1, 5, yppd);
+    input->SetValue(2, 5, zppd);
+
     input->ReleaseMutex();
 }
 

@@ -33,6 +33,7 @@
 #include <DoubleSpinBox.h>
 #include <Vector3DSpinBox.h>
 #include <iostream>
+#include<Vector2D.h>
 
 using namespace std;
 using namespace flair::core;
@@ -164,20 +165,20 @@ void BPNN::computeMyCtrl(Euler &torques)
     Quaternion mixQuaternion = ahrsEuler.ToQuaternion();
 
     // Compute the position and velocity errors in the UAV frame
-    Vector2Df pos_error2D, vel_error2D;
+    Vector2Df pos_error2D, vel_error2D, acceleration2D;
     // Example of desired altitude [m] => (ALWAYS A POSITIVE VALUE) 
     // Because the AltitudeValues function returns a positive value also. However, the UAV's altitude is negative in the VRPN coordinate system.
     float altittude_desired = desired_position->Value().z; 
     float yaw_ref;
     float z, dz;
     AltitudeValues(z, dz);
-    PositionValues(pos_error2D, vel_error2D, yaw_ref);
+    PositionValues(pos_error2D, vel_error2D, yaw_ref, acceleration2D);
     // Notice that the error definition is current - desired for x,y and z. 
     Vector3Df pos_error = Vector3Df(pos_error2D.x, pos_error2D.y, z-altittude_desired);
     Vector3Df vel_error = Vector3Df(vel_error2D.x, vel_error2D.y, dz);
 
     // Set the values of the custom controller and update it
-    myCtrl->SetValues(pos_error, vel_error, mixQuaternion, currentAngularSpeed, yaw_ref);
+    myCtrl->SetValues(pos_error, vel_error, mixQuaternion, currentAngularSpeed, yaw_ref, acceleration2D.x, acceleration2D.y, 0.0f);
     myCtrl->Update(GetTime());
 
     // Apply the computed torques and thrust
@@ -285,11 +286,11 @@ void BPNN::AltitudeValues(float &z,float &dz) const{
 }
 
 AhrsData *BPNN::GetReferenceOrientation(void) {
-    Vector2Df pos_err, vel_err; // in Uav coordinate system
+    Vector2Df pos_err, vel_err, circle_acc; // in Uav coordinate system
     float yaw_ref;
     Euler refAngles;
 
-    PositionValues(pos_err, vel_err, yaw_ref);
+    PositionValues(pos_err, vel_err, yaw_ref, circle_acc);
 
     refAngles.yaw=yaw_ref;
 
@@ -306,7 +307,7 @@ AhrsData *BPNN::GetReferenceOrientation(void) {
     return customReferenceOrientation;
 }
 
-void BPNN::PositionValues(Vector2Df &pos_error,Vector2Df &vel_error,float &yaw_ref) {
+void BPNN::PositionValues(Vector2Df &pos_error,Vector2Df &vel_error,float &yaw_ref, Vector2Df &circle_acc) {
     Vector3Df uav_pos,uav_vel; // in VRPN coordinate system
     Vector2Df uav_2Dpos,uav_2Dvel; // in VRPN coordinate system
 
@@ -320,21 +321,27 @@ void BPNN::PositionValues(Vector2Df &pos_error,Vector2Df &vel_error,float &yaw_r
         pos_error=uav_2Dpos-posHold;
         vel_error=uav_2Dvel;
         yaw_ref=yawHold;
+        circle_acc.x = 0.0f; // Circle acceleration is not used in PositionHold mode (Remove if not work)
+        circle_acc.y = 0.0f;
     } 
     else if (behaviourMode==BehaviourMode_t::Hover) {
         pos_error=uav_2Dpos;
         vel_error=uav_2Dvel;
         yaw_ref=0;
+        circle_acc.x = 0.0f; // Circle acceleration is not used in Hover mode (Remove if not work)
+        circle_acc.y = 0.0f;
     } 
     else if (behaviourMode==BehaviourMode_t::Regulation) {
         Vector2Df desired_position_xy(desired_position->Value().x, desired_position->Value().y);
         pos_error=uav_2Dpos - desired_position_xy;
         vel_error=uav_2Dvel;
         yaw_ref=(float)desired_yaw->Value();
+        circle_acc.x = 0.0f;
+        circle_acc.y = 0.0f;
     }
     else { //Circle
         Vector3Df target_pos;
-        Vector2Df circle_pos,circle_vel;
+        Vector2Df circle_pos,circle_vel, circle_acc_ref;
         Vector2Df target_2Dpos;
 
         targetVrpn->GetPosition(target_pos);
@@ -345,11 +352,13 @@ void BPNN::PositionValues(Vector2Df &pos_error,Vector2Df &vel_error,float &yaw_r
         circle->Update(GetTime());
         circle->GetPosition(circle_pos);
         circle->GetSpeed(circle_vel);
+        circle->GetAcceleration(circle_acc); // Acceleration for circle
 
         //error in optitrack frame
         pos_error=uav_2Dpos-circle_pos;
         vel_error=uav_2Dvel-circle_vel;
-        yaw_ref=atan2(target_pos.y-uav_pos.y,target_pos.x-uav_pos.x);
+        yaw_ref = 0;
+        circle_acc = circle_acc_ref;
     }
 
     //error in uav frame
@@ -358,6 +367,7 @@ void BPNN::PositionValues(Vector2Df &pos_error,Vector2Df &vel_error,float &yaw_r
     currentQuaternion.ToEuler(currentAngles);
     pos_error.Rotate(-currentAngles.yaw);
     vel_error.Rotate(-currentAngles.yaw);
+    circle_acc.Rotate(-currentAngles.yaw);
 }
 
 void BPNN::SignalEvent(Event_t event) {
@@ -476,7 +486,7 @@ void BPNN::Start_task(void) {
 
         uavVrpn->GetPosition(uav_pos);
         uav_pos.To2Dxy(uav_2Dpos);
-        circle->StartTraj(uav_2Dpos);
+        circle->StartTraj(uav_2Dpos); //circle->StartTraj(uav_2Dpos, 1); // One lap
 
         uX->Reset();
         uY->Reset();
