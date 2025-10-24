@@ -34,6 +34,7 @@
 #include <Vector3DSpinBox.h>
 #include <iostream>
 #include<Vector2D.h>
+#include <TabWidget.h>
 
 using namespace std;
 using namespace flair::core;
@@ -104,8 +105,13 @@ BPNN::BPNN(TargetController *controller): UavStateMachine(controller), behaviour
     uY->UseDefaultPlot(graphLawTab->LastRowLastCol());
 
     // Custom control law
-    Tab *setup_custom_controller = new Tab(getFrameworkManager()->GetTabWidget(),"Custom controller");
-    myCtrl = new MyController(setup_custom_controller->At(0,0),"PID controller");
+    Tab *gui_custom_controller = new Tab(getFrameworkManager()->GetTabWidget(),"BPNN");
+    auto *tabs_custom_controller = new TabWidget(gui_custom_controller->At(0,0),"Setup");
+    setup_custom_controller = new Tab(tabs_custom_controller,"Setup");
+    graphs_custom_controller = new Tab(tabs_custom_controller,"Graphs");
+
+    myCtrl = new MyController(setup_custom_controller->At(0,0),"BPNN");
+    myCtrl->plotEstimatedMass(graphs_custom_controller->At(0,0));
 
     customReferenceOrientation= new AhrsData(this,"reference");
     uav->GetAhrs()->AddPlot(customReferenceOrientation,DataPlot::Yellow);

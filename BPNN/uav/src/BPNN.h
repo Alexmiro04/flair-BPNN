@@ -25,6 +25,7 @@ namespace flair {
         class CheckBox;
         class Vector3DSpinBox;
         class DoubleSpinBox;
+        class Tab;
     }
     namespace filter {
         class TrajectoryGenerator2DCircle;
@@ -105,6 +106,7 @@ class BPNN : public flair::meta::UavStateMachine {
 
         // Custom control law
         flair::gui::DoubleSpinBox *deltaT_custom;
+        flair::gui::Tab *setup_custom_controller, *graphs_custom_controller;
 
         // Custom task
         flair::gui::ComboBox *task_selection;
