@@ -492,7 +492,7 @@ void BPNN::Start_task(void) {
 
         uavVrpn->GetPosition(uav_pos);
         uav_pos.To2Dxy(uav_2Dpos);
-        circle->StartTraj(uav_2Dpos); //circle->StartTraj(uav_2Dpos, 1); // One lap
+        circle->StartTraj(uav_2Dpos, 1); //circle->StartTraj(uav_2Dpos, 1); // One lap
 
         uX->Reset();
         uY->Reset();

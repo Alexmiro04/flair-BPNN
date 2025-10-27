@@ -7,6 +7,7 @@
 #include <Quaternion.h>
 #include <array>
 #include <random>
+#include <string>
 #include <vector>
 
 namespace flair {
@@ -47,9 +48,13 @@ namespace flair {
                 bool first_update;
                 bool has_prev_velocity;
 
+                static constexpr size_t kStateBaseEntries = 5;
+                static constexpr size_t kLoggedNeurons = 1;
+                static constexpr size_t kWeightsPerLoggedNeuron = 4;
+
                 flair::core::Matrix *state;
                 flair::gui::Vector3DSpinBox *Kp_pos, *Kd_pos, *Ki_pos, *Kp_att, *Kd_att, *Ki_att;
-                flair::gui::DoubleSpinBox *deltaT_custom, *k_motor, *sat_pos, *sat_att, *sat_thrust, *mass_ref;
+                flair::gui::DoubleSpinBox *deltaT_custom, *k_motor, *sat_pos, *sat_att, *sat_thrust;
                 flair::gui::DoubleSpinBox *nn_hidden_neurons, *nn_weight_std, *nn_learning_rate, *nn_regularization;
                 flair::gui::DoubleSpinBox *nn_eps0, *nn_u_nom, *nn_nu_nom, *nn_mass_min, *nn_mass_max, *nn_use_nlms;
 
@@ -72,6 +77,7 @@ namespace flair {
                 void updateMassEstimator(float dt, float thrust_input, float nuz, float actual_acc_z);
                 float clampMass(float mass);
                 void massBounds(float &min_mass, float &max_mass) const;
+                float initialMassGuess(void) const;
                 float safeSoftplus(float x) const;
                 float sigmoid(float x) const;
         };

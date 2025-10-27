@@ -40,11 +40,26 @@ MyController::MyController(const LayoutPosition *position, const string &name) :
     input = new Matrix(this, 4, 6, floatType, name);
 
     // Matrix descriptor for logging. It should be always a nx1 matrix.
-    MatrixDescriptor *log_labels = new MatrixDescriptor(4, 1);
+    const size_t state_rows = kStateBaseEntries + kLoggedNeurons * kWeightsPerLoggedNeuron;
+    MatrixDescriptor *log_labels = new MatrixDescriptor(state_rows, 1);
     log_labels->SetElementName(0, 0, "x_error");
     log_labels->SetElementName(1, 0, "y_error");
     log_labels->SetElementName(2, 0, "z_error");
     log_labels->SetElementName(3, 0, "mass_hat");
+    log_labels->SetElementName(4, 0, "thrust");
+    for(size_t i = 0; i < kLoggedNeurons; ++i)
+    {
+        size_t base = kStateBaseEntries + i * kWeightsPerLoggedNeuron;
+        std::string prefix = "nn_h" + std::to_string(i + 1) + "_";
+        std::string label_mu0 = prefix + "w1_mu0";
+        std::string label_mu1 = prefix + "w1_mu1";
+        std::string label_b1 = prefix + "b1";
+        std::string label_w2 = prefix + "w2";
+        log_labels->SetElementName(base + 0, 0, label_mu0.c_str());
+        log_labels->SetElementName(base + 1, 0, label_mu1.c_str());
+        log_labels->SetElementName(base + 2, 0, label_b1.c_str());
+        log_labels->SetElementName(base + 3, 0, label_w2.c_str());
+    }
     state = new Matrix(this, log_labels, floatType, name);
     delete log_labels;
 
@@ -56,7 +71,6 @@ MyController::MyController(const LayoutPosition *position, const string &name) :
     sat_pos = new DoubleSpinBox(general_parameters->NewRow(), "Saturation pos", 0, 10, 0.01, 3);
     sat_att = new DoubleSpinBox(general_parameters->LastRowLastCol(), "Saturation att", 0, 10, 0.01, 3);
     sat_thrust = new DoubleSpinBox(general_parameters->LastRowLastCol(), "Saturation thrust", 0, 10, 0.01, 3);
-    mass_ref = new DoubleSpinBox(general_parameters->NewRow(), "Mass_ref [kg]", 0, 10, 0.01, 4, 1.2);
     
     // Neural network mass estimator parameters
     GroupBox *nn_group = new GroupBox(gui_customPID->NewRow(), "NN mass estimator");
@@ -68,8 +82,8 @@ MyController::MyController(const LayoutPosition *position, const string &name) :
     nn_use_nlms = new DoubleSpinBox(nn_group->LastRowLastCol(), "Use NLMS (0/1)", 0, 1, 1, 0, 1);
     nn_u_nom = new DoubleSpinBox(nn_group->NewRow(), "u_{nom}", 0.1, 100, 0.1, 2, 10.0);
     nn_nu_nom = new DoubleSpinBox(nn_group->LastRowLastCol(), "nu_{nom}", 0.1, 100, 0.1, 2, 15.0);
-    nn_mass_min = new DoubleSpinBox(nn_group->NewRow(), "Mass min [kg]", 0.1, 20, 0.01, 2, 0.5);
-    nn_mass_max = new DoubleSpinBox(nn_group->LastRowLastCol(), "Mass max [kg]", 0.1, 20, 0.01, 2, 5.0);
+    nn_mass_min = new DoubleSpinBox(nn_group->NewRow(), "Min mass [kg]", 0.1, 20, 0.01, 2, 0.1);
+    nn_mass_max = new DoubleSpinBox(nn_group->LastRowLastCol(), "Max mass [kg]", 0.1, 20, 0.01, 2, 20.0);
     
     // Custom cartesian position controller
     GroupBox *custom_position = new GroupBox(gui_customPID->NewRow(), "Custom position controller");
@@ -135,17 +149,13 @@ void MyController::UpdateFrom(const io_data *data)
     Vector3Df Ki_att_val(Ki_att->Value().x, Ki_att->Value().y, Ki_att->Value().z);
 
     // Mass used for control
-    float mass_for_control = mass_hat;
-    /*if(mass_for_control <= 0.0f)
+    float mass_for_control = clampMass(mass_hat);
+    if(mass_for_control <= 0.0f)
     {
-        mass_for_control = clampMass(static_cast<float>(mass_ref->Value()));
+        mass_for_control = initialMassGuess();
         theta_hat = 1.0f / mass_for_control;
         mass_hat = mass_for_control;
     }
-    else
-    {
-        mass_for_control = clampMass(mass_for_control);
-    }*/
 
     float nux = xppd+Kp_pos_val.x*pos_error.x + Kd_pos_val.x*vel_error.x;
     float nuy = yppd+Kp_pos_val.y*pos_error.y + Kd_pos_val.y*vel_error.y;
@@ -169,12 +179,10 @@ void MyController::UpdateFrom(const io_data *data)
     // Compute custom thrust
     thrust = ctrl_z; // This is the thrust needed to counteract gravity and control the z position
     applyMotorConstant(thrust);
-    if(thrust < -sat_att->Value())
-    {
-        thrust = -sat_att->Value();
-    }
-    else if(thrust >= 0)
-    {
+    float thr_sat = sat_thrust->Value();
+    if(thrust < -thr_sat) {
+      thrust = -thr_sat;
+    } else if(thrust >= 0) {
         thrust = 0;
     }
 
@@ -223,6 +231,33 @@ void MyController::UpdateFrom(const io_data *data)
     state->SetValue(1, 0, pos_error.y);
     state->SetValue(2, 0, pos_error.z);
     state->SetValue(3, 0, mass_hat);
+    state->SetValue(4, 0, thrust);
+    size_t row = kStateBaseEntries;
+    for(size_t i = 0; i < kLoggedNeurons; ++i)
+    {
+        float w_mu0 = 0.0f;
+        float w_mu1 = 0.0f;
+        float b_hidden = 0.0f;
+        float w_out = 0.0f;
+        if(i < W1.size())
+        {
+            w_mu0 = W1[i][0];
+            w_mu1 = W1[i][1];
+        }
+        if(i < b1.size())
+        {
+            b_hidden = b1[i];
+        }
+        if(i < w2.size())
+        {
+            w_out = w2[i];
+        }
+        state->SetValue(row + 0, 0, w_mu0);
+        state->SetValue(row + 1, 0, w_mu1);
+        state->SetValue(row + 2, 0, b_hidden);
+        state->SetValue(row + 3, 0, w_out);
+        row += kWeightsPerLoggedNeuron;
+    }
     state->ReleaseMutex();
 
     ProcessUpdate(output);
@@ -234,6 +269,8 @@ void MyController::Reset(void)
     has_prev_velocity = false;
     prev_vel_z = 0.0f;
     u_prev_z = 0.0f;
+    mass_hat = initialMassGuess();
+    theta_hat = 1.0f / mass_hat;
 }
 
 void MyController::SetValues(Vector3Df pos_error, Vector3Df vel_error, Quaternion currentQuaternion, Vector3Df omega, float yaw_ref, float xppd, float yppd, float zppd)
@@ -324,11 +361,7 @@ void MyController::initializeNetwork(void)
     b2 = 0.0f;
     last_weight_std = static_cast<float>(nn_weight_std->Value());
 
-    mass_hat = clampMass(static_cast<float>(mass_ref->Value()));
-    if(mass_hat <= 0.0f)
-    {
-        mass_hat = clampMass(1.0f);
-    }
+    mass_hat = initialMassGuess();
     theta_hat = 1.0f / mass_hat;
     prev_vel_z = 0.0f;
     u_prev_z = 0.0f;
@@ -356,6 +389,18 @@ float MyController::clampMass(float mass)
     massBounds(min_mass, max_mass);
     mass = std::max(min_mass, std::min(max_mass, mass));
     return mass;
+}
+
+float MyController::initialMassGuess(void) const
+{
+    float min_mass, max_mass;
+    massBounds(min_mass, max_mass);
+    float guess = 0.5f * (min_mass + max_mass);
+    if(guess <= 0.0f)
+    {
+        guess = std::max(min_mass, 1e-3f);
+    }
+    return std::max(min_mass, std::min(max_mass, guess));
 }
 
 float MyController::safeSoftplus(float x) const
@@ -465,6 +510,22 @@ void MyController::updateMassEstimator(float dt, float thrust_input, float nuz, 
 
 void MyController::plotEstimatedMass(const LayoutPosition *position)
 {
-    DataPlot1D *mass_plot = new DataPlot1D(position, "Estimated Mass", 0, 4);
+    GroupBox *plots_group = new GroupBox(position, "NN monitoring");
+
+    DataPlot1D *mass_plot = new DataPlot1D(plots_group->NewRow(), "Estimated Mass", 0, 4);
     mass_plot->AddCurve(state->Element(3), DataPlot::Blue);
+
+    DataPlot1D *thrust_plot = new DataPlot1D(plots_group->LastRowLastCol(), "Thrust command", -1, 1);
+    thrust_plot->AddCurve(state->Element(4), DataPlot::Red);
+
+    DataPlot1D *weights_plot = new DataPlot1D(plots_group->NewRow(), "NN weights (first neuron)", -1, 1);
+    size_t row = kStateBaseEntries;
+    for(size_t i = 0; i < kLoggedNeurons; ++i)
+    {
+        size_t base = row + i * kWeightsPerLoggedNeuron;
+        weights_plot->AddCurve(state->Element(base + 0), DataPlot::Green);
+        weights_plot->AddCurve(state->Element(base + 1), DataPlot::Blue);
+        weights_plot->AddCurve(state->Element(base + 2), DataPlot::Red);
+        weights_plot->AddCurve(state->Element(base + 3), DataPlot::Yellow);
+    }
 }
