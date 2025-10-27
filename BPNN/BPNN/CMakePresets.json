@@ -1,0 +1,43 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "flair-cross-compile-core2_64",
+      "displayName": "Flair core2_64 Cross-Compile (Release)", 
+      "description": "Configures the build using the Flair core2_64 toolchain.",
+      "generator": "Unix Makefiles",
+      "binaryDir": "/home/alexmiro/flair/flair-build/build_usr/${sourceDirName}/core2_64",
+      "cmakeExecutable": "/opt/robomap3/2.1.3/core2-64/sysroots/x86_64-pokysdk-linux/usr/bin/cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_TOOLCHAIN_FILE": "/opt/robomap3/2.1.3/core2-64/toolchain.cmake"
+      }
+    },
+    {
+      "name": "flair-cross-compile-armv7a_neon",
+      "displayName": "Flair armv7a_neon Cross-Compile (Release)", 
+      "description": "Configures the build using the Flair armv7a_neon toolchain.",
+      "generator": "Unix Makefiles",
+      "binaryDir": "/home/alexmiro/flair/flair-build/build_usr/${sourceDirName}/armv7a_neon",
+      "cmakeExecutable": "/opt/robomap3/2.1.3/armv7a-neon/sysroots/x86_64-pokysdk-linux/usr/bin/cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_TOOLCHAIN_FILE": "/opt/robomap3/2.1.3/armv7a-neon/toolchain.cmake"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "default-core2_64",
+      "displayName": "Flair core2_64 install (Release)", 
+      "configurePreset": "flair-cross-compile-core2_64",
+      "targets": ["install"]
+    },
+    {
+      "name": "default-armv7a_neon",
+      "displayName": "Flair armv7a_neon install (Release)", 
+      "configurePreset": "flair-cross-compile-armv7a_neon",
+      "targets": ["install"]
+    }
+  ]
+}
