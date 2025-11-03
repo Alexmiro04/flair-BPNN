@@ -396,12 +396,12 @@ void BPNN::SignalEvent(Event_t event) {
 
 void BPNN::ExtraSecurityCheck(void) {
     if ((!vrpnLost) && ((behaviourMode==BehaviourMode_t::Circle) || (behaviourMode==BehaviourMode_t::PositionHold))) {
-        if (!targetVrpn->IsTracked(500)) {
-            Thread::Err("VRPN, target lost\n");
-            vrpnLost=true;
-            EnterFailSafeMode();
-            Land();
-        }
+        // if (!targetVrpn->IsTracked(500)) {
+        //     Thread::Err("VRPN, target lost\n");
+        //     vrpnLost=true;
+        //     EnterFailSafeMode();
+        //     Land();
+        // }
         if (!uavVrpn->IsTracked(500)) {
             Thread::Err("VRPN, uav lost\n");
             vrpnLost=true;
@@ -483,12 +483,10 @@ void BPNN::Start_task(void) {
         Thread::Info("BPNN: regulation task\n");
     }
     else if (task_selection->CurrentIndex() == 2) {
-        Vector3Df uav_pos,target_pos;
-        Vector2Df uav_2Dpos,target_2Dpos;
+        Vector3Df uav_pos;
+        Vector2Df uav_2Dpos;
 
-        targetVrpn->GetPosition(target_pos);
-        target_pos.To2Dxy(target_2Dpos);
-        circle->SetCenter(target_2Dpos);
+        circle->SetCenter(Vector2Df(0.0, 0.0)); //circle->SetCenter(target_2Dpos);
 
         uavVrpn->GetPosition(uav_pos);
         uav_pos.To2Dxy(uav_2Dpos);

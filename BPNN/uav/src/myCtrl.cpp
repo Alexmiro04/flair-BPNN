@@ -16,6 +16,8 @@
 #include <Label.h>
 #include <Vector3DSpinBox.h>
 #include <Pid.h>
+#include <ComboBox.h>
+#include <random>
 
 using std::string;
 using namespace flair::core;
@@ -71,7 +73,15 @@ MyController::MyController(const LayoutPosition *position, const string &name) :
     sat_pos = new DoubleSpinBox(general_parameters->NewRow(), "Saturation pos", 0, 10, 0.01, 3);
     sat_att = new DoubleSpinBox(general_parameters->LastRowLastCol(), "Saturation att", 0, 10, 0.01, 3);
     sat_thrust = new DoubleSpinBox(general_parameters->LastRowLastCol(), "Saturation thrust", 0, 10, 0.01, 3);
-    
+
+    GroupBox *disturbances = new GroupBox(gui_customPID->NewRow(), "Disturbances");
+    wind_mode = new ComboBox(disturbances->NewRow(), "Wind");
+    wind_mode->AddItem("Disabled");
+    wind_mode->AddItem("Constant force");
+    wind_mode->AddItem("Gaussian noise");
+    wind_force_spin = new Vector3DSpinBox(disturbances->NewRow(), "Wind mean force [N]", -10, 10, 0.1, 3);
+    wind_noise_std_spin = new Vector3DSpinBox(disturbances->NewRow(), "Wind noise std [N]", 0, 10, 0.1, 3);
+
     // Neural network mass estimator parameters
     GroupBox *nn_group = new GroupBox(gui_customPID->NewRow(), "NN mass estimator");
     nn_hidden_neurons = new DoubleSpinBox(nn_group->NewRow(), "Hidden neurons", 1, 64, 1, 0, 6);
@@ -161,12 +171,48 @@ void MyController::UpdateFrom(const io_data *data)
     float nuy = yppd+Kp_pos_val.y*pos_error.y + Kd_pos_val.y*vel_error.y;
     float nuz = zppd + Kp_pos_val.z*pos_error.z + Kd_pos_val.z*vel_error.z - g;
 
+    Vector3Df wind_force(0.0f, 0.0f, 0.0f);
+    int wind_selection = wind_mode->CurrentIndex();
+    if(wind_selection == 1)
+    {
+        auto wind_values = wind_force_spin->Value();
+        wind_force.x = wind_values.x;
+        wind_force.y = wind_values.y;
+        wind_force.z = wind_values.z;
+    }
+    else if(wind_selection == 2)
+    {
+        auto mean_values = wind_force_spin->Value();
+        auto std_values = wind_noise_std_spin->Value();
+        const float mean_components[3] = {mean_values.x, mean_values.y, mean_values.z};
+        const float std_components[3] = {std_values.x, std_values.y, std_values.z};
+        float *wind_components[3] = {&wind_force.x, &wind_force.y, &wind_force.z};
+        for(int i = 0; i < 3; ++i)
+        {
+            float std_dev = std::max(std_components[i], 0.0f);
+            float mean = mean_components[i];
+            if(std_dev > 0.0f)
+            {
+                std::normal_distribution<float> dist(mean, std_dev);
+                *wind_components[i] = dist(rng);
+            }
+            else
+            {
+                *wind_components[i] = mean;
+            }
+        }
+    }
+
+
+
     // Cartesian custom controller
-    u.x = mass_for_control*(nux);
-    u.y = mass_for_control*(nuy);
-    u.z = mass_for_control*(nuz);
-    float ctrl_z = u.z; // This is the thrust needed to control the z position before saturation
-    u.Saturate(sat_pos->Value());
+    Vector3Df control_effort(mass_for_control * nux,
+                             mass_for_control * nuy,
+                             mass_for_control * nuz);
+    control_effort += wind_force;
+    float ctrl_z = control_effort.z; // This is the thrust needed to control the z position before saturation
+    control_effort.Saturate(sat_pos->Value());
+    u = control_effort;
 
     // Attitude custom controller
     Euler rpy = q.ToEuler();

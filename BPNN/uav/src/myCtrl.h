@@ -1,6 +1,7 @@
 #ifndef MYCTRL_H
 #define MYCTRL_H
 
+#include <ComboBox.h>
 #include <Object.h>
 #include <ControlLaw.h>
 #include <Vector3D.h>
@@ -19,6 +20,7 @@ namespace flair {
         class LayoutPosition;
         class DoubleSpinBox;
         class CheckBox;
+        class ComboBox;
         class Label;
         class Vector3DSpinBox;
     }
@@ -49,14 +51,15 @@ namespace flair {
                 bool has_prev_velocity;
 
                 static constexpr size_t kStateBaseEntries = 5;
-                static constexpr size_t kLoggedNeurons = 1;
+                static constexpr size_t kLoggedNeurons = 6;
                 static constexpr size_t kWeightsPerLoggedNeuron = 4;
 
                 flair::core::Matrix *state;
-                flair::gui::Vector3DSpinBox *Kp_pos, *Kd_pos, *Ki_pos, *Kp_att, *Kd_att, *Ki_att;
+                flair::gui::Vector3DSpinBox *Kp_pos, *Kd_pos, *Ki_pos, *Kp_att, *Kd_att, *Ki_att, *wind_force_spin, *wind_noise_std_spin;
                 flair::gui::DoubleSpinBox *deltaT_custom, *k_motor, *sat_pos, *sat_att, *sat_thrust;
                 flair::gui::DoubleSpinBox *nn_hidden_neurons, *nn_weight_std, *nn_learning_rate, *nn_regularization;
                 flair::gui::DoubleSpinBox *nn_eps0, *nn_u_nom, *nn_nu_nom, *nn_mass_min, *nn_mass_max, *nn_use_nlms;
+                flair::gui::ComboBox *wind_mode;
 
                 std::mt19937 rng;
                 bool network_ready;
